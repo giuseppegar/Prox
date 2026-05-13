@@ -6,7 +6,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 
 from prox.graph.state import AgentState, Mode
-from prox.llm.models import ModelRegistry
+from prox.llm import get_model_for_role, Role
 
 MINI_ORCH_INSTRUCTIONS = """Sei un Mini Orchestrator. Collabori con altri Mini Orchestrator per raffinare il piano.
 
@@ -27,8 +27,8 @@ PARKING_LOT: task rimandabili
 """
 
 
-def create_mini_orch_agent(model_registry: ModelRegistry) -> AgentExecutor:
-    model_name = model_registry.get_model("mini_orchestrator")
+def create_mini_orch_agent() -> AgentExecutor:
+    model_name = get_model_for_role(Role.MINI_ORCHESTRATOR)
     llm = ChatOpenAI(model=model_name, temperature=0.3, max_tokens=4096)
 
     prompt = ChatPromptTemplate.from_messages([
@@ -42,8 +42,7 @@ def create_mini_orch_agent(model_registry: ModelRegistry) -> AgentExecutor:
 
 
 def mini_orchestrator_node(state: AgentState) -> dict:
-    registry = ModelRegistry.from_config()
-    agent = create_mini_orch_agent(registry)
+    agent = create_mini_orch_agent()
 
     user_query = state.get("user_query", "")
     tasks = state.get("tasks", [])

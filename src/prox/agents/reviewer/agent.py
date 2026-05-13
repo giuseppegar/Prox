@@ -7,7 +7,7 @@ from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate
 
 from prox.graph.state import AgentState
-from prox.llm.models import ModelRegistry
+from prox.llm import get_model_for_role, Role
 
 REVIEWER_INSTRUCTIONS = """Sei un agente Reviewer aggressivo. Il tuo compito e' trovare problemi, non complimenti.
 
@@ -53,8 +53,8 @@ def read_file_review(file_path: str) -> str:
 REVIEWER_TOOLS = [analyze_diff, read_file_review]
 
 
-def create_reviewer_agent(model_registry: ModelRegistry) -> AgentExecutor:
-    model_name = model_registry.get_model("worker")
+def create_reviewer_agent() -> AgentExecutor:
+    model_name = get_model_for_role(Role.REVIEWER)
     llm = ChatOpenAI(model=model_name, temperature=0.0, max_tokens=4096)
 
     prompt = ChatPromptTemplate.from_messages([
@@ -68,8 +68,7 @@ def create_reviewer_agent(model_registry: ModelRegistry) -> AgentExecutor:
 
 
 def reviewer_node(state: AgentState) -> dict:
-    registry = ModelRegistry.from_config()
-    agent = create_reviewer_agent(registry)
+    agent = create_reviewer_agent()
 
     tasks = state.get("tasks", [])
     active_task = None

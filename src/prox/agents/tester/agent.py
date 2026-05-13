@@ -7,7 +7,7 @@ from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate
 
 from prox.graph.state import AgentState
-from prox.llm.models import ModelRegistry
+from prox.llm import get_model_for_role, Role
 
 TESTER_INSTRUCTIONS = """Sei un agente Tester. Scrivi ed esegui test automatici.
 
@@ -53,8 +53,8 @@ def run_command(command: str) -> str:
 TESTER_TOOLS = [run_python_tests, run_command]
 
 
-def create_tester_agent(model_registry: ModelRegistry) -> AgentExecutor:
-    model_name = model_registry.get_model("worker")
+def create_tester_agent() -> AgentExecutor:
+    model_name = get_model_for_role(Role.TESTER)
     llm = ChatOpenAI(model=model_name, temperature=0.0, max_tokens=4096)
 
     prompt = ChatPromptTemplate.from_messages([
@@ -68,8 +68,7 @@ def create_tester_agent(model_registry: ModelRegistry) -> AgentExecutor:
 
 
 def tester_node(state: AgentState) -> dict:
-    registry = ModelRegistry.from_config()
-    agent = create_tester_agent(registry)
+    agent = create_tester_agent()
 
     tasks = state.get("tasks", [])
     active_task = None

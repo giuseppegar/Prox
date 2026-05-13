@@ -7,7 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate
 import httpx
 
 from prox.graph.state import AgentState
-from prox.llm.models import ModelRegistry
+from prox.llm import get_model_for_role, Role
 
 RESEARCHER_INSTRUCTIONS = """Sei un agente Researcher. Unico con accesso a internet e ricerca.
 
@@ -68,8 +68,8 @@ def check_package_version(package_name: str) -> str:
 RESEARCHER_TOOLS = [web_search, fetch_docs, check_package_version]
 
 
-def create_researcher_agent(model_registry: ModelRegistry) -> AgentExecutor:
-    model_name = model_registry.get_model("worker")
+def create_researcher_agent() -> AgentExecutor:
+    model_name = get_model_for_role(Role.RESEARCHER)
     llm = ChatOpenAI(model=model_name, temperature=0.1, max_tokens=4096)
 
     prompt = ChatPromptTemplate.from_messages([
@@ -83,8 +83,7 @@ def create_researcher_agent(model_registry: ModelRegistry) -> AgentExecutor:
 
 
 def researcher_node(state: AgentState) -> dict:
-    registry = ModelRegistry.from_config()
-    agent = create_researcher_agent(registry)
+    agent = create_researcher_agent()
 
     tasks = state.get("tasks", [])
     active_task = None

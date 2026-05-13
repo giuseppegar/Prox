@@ -7,7 +7,7 @@ from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate
 
 from prox.graph.state import AgentState
-from prox.llm.models import ModelRegistry
+from prox.llm import get_model_for_role, Role
 from prox.synapse import NeuralStore, AttentionEngine, HebbianGraph, DecayScheduler, ConsolidationLoop
 
 MEMORY_INSTRUCTIONS = """Sei l'agente Memory. Custode della memoria neurale Synapse.
@@ -29,8 +29,8 @@ REGOL:
 """
 
 
-def create_memory_agent(model_registry: ModelRegistry) -> AgentExecutor:
-    model_name = model_registry.get_model("worker")
+def create_memory_agent() -> AgentExecutor:
+    model_name = get_model_for_role(Role.MEMORY)
     llm = ChatOpenAI(model=model_name, temperature=0.1, max_tokens=4096)
 
     prompt = ChatPromptTemplate.from_messages([
@@ -44,8 +44,7 @@ def create_memory_agent(model_registry: ModelRegistry) -> AgentExecutor:
 
 
 def memory_node(state: AgentState) -> dict:
-    registry = ModelRegistry.from_config()
-    agent = create_memory_agent(registry)
+    agent = create_memory_agent()
 
     store = NeuralStore()
     attention = AttentionEngine(store)

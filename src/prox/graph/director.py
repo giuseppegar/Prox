@@ -7,7 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 
 from prox.graph.state import AgentState, Mode, Task
-from prox.llm.models import ModelRegistry
+from prox.llm import get_model_for_role, Role
 from prox.vault.store import CredentialStore
 
 MAX_ATTEMPTS = 3
@@ -32,8 +32,8 @@ PRIORITY: <high/medium/low>
 """
 
 
-def create_director_agent(model_registry: ModelRegistry) -> AgentExecutor:
-    model_name = model_registry.get_model("director")
+def create_director_agent() -> AgentExecutor:
+    model_name = get_model_for_role(Role.DIRECTOR)
     llm = ChatOpenAI(model=model_name, temperature=0.1, max_tokens=4096)
 
     prompt = ChatPromptTemplate.from_messages([
@@ -47,8 +47,7 @@ def create_director_agent(model_registry: ModelRegistry) -> AgentExecutor:
 
 
 def director_node(state: AgentState) -> dict:
-    registry = ModelRegistry.from_config()
-    agent = create_director_agent(registry)
+    agent = create_director_agent()
 
     mode = Mode(state.get("mode", "interactive"))
     project_dir = state.get("project_dir", ".")

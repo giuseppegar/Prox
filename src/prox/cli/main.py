@@ -110,41 +110,44 @@ def setup():
     config_dir = os.path.expanduser("~/.prox")
     os.makedirs(config_dir, exist_ok=True)
 
-    config_path = os.path.join(config_dir, "config.yaml")
+    from prox.llm import ModelRouter, ProviderType, discover_and_assign
 
-    openai_key = click.prompt("OpenAI API Key (lascia vuoto se non hai)", default="", hide_input=True)
-    anthropic_key = click.prompt("Anthropic API Key (lascia vuoto se non hai)", default="", hide_input=True)
-    deepseek_key = click.prompt("DeepSeek API Key (lascia vuoto se non hai)", default="", hide_input=True)
+    router = ModelRouter()
 
-    default_model = click.prompt("Modello default per orchestratori", default="deepseek/deepseek-chat")
-    worker_model = click.prompt("Modello default per worker", default="gpt-4o-mini")
+    click.echo("\nConfigura i provider LLM. Puoi aggiungerne piu' di uno.")
+    click.echo("Un provider NATIVE da' accesso solo ai suoi modelli.")
+    click.echo("Un provider PROXY (es. OpenRouter) da' accesso a TUTTI i modelli.\n")
 
-    import yaml
-    config = {
-        "llm": {
-            "main_orchestrator": {"model": default_model},
-            "mini_orchestrator": {"model": default_model},
-            "director": {"model": default_model},
-            "worker": {"model": worker_model},
-        },
-        "api_keys": {},
-    }
+    while True:
+        name = click.prompt("Nome provider (es. deepseek, openai, openrouter) o INVIO per finire", default="")
+        if not name:
+            break
 
-    if openai_key:
-        os.environ["OPENAI_API_KEY"] = openai_key
-        config["api_keys"]["openai"] = "${OPENAI_API_KEY}"
-    if anthropic_key:
-        os.environ["ANTHROPIC_API_KEY"] = anthropic_key
-        config["api_keys"]["anthropic"] = "${ANTHROPIC_API_KEY}"
-    if deepseek_key:
-        os.environ["DEEPSEEK_API_KEY"] = deepseek_key
-        config["api_keys"]["deepseek"] = "${DEEPSEEK_API_KEY}"
+        click.echo(f"  Tipo: [N]ative (solo modelli {name}) o [P]roxy (tutti i modelli)?")
+        type_choice = click.prompt("  Scegli N/P", default="N")
+        prov_type = "proxy" if type_choice.upper() == "P" else "native"
 
-    with open(config_path, "w") as f:
-        yaml.dump(config, f, default_flow_style=False)
+        key_env = f"{name.upper()}_API_KEY"
+        key = click.prompt(f"  API Key (o INVIO per usare ${key_env})", default="", hide_input=True)
+
+        if key:
+            os.environ[key_env] = key
+
+        router.add_provider(name, prov_type, key=key if key else None, key_env=key_env)
+        click.echo(f"  Provider '{name}' ({prov_type}) aggiunto.\n")
+
+    click.echo("\nScoperta modelli disponibili...")
+    assignments = router.discover_and_assign()
+
+    click.echo("\nAssegnazione automatica modelli per ruolo:")
+    click.echo(router.summary())
+
+    auto_assign = click.confirm("\nConfermi queste assegnazioni?", default=True)
+    if not auto_assign:
+        click.echo("Puoi modificare ~/.prox/config.yaml manualmente.")
 
     vault_passphrase = click.prompt(
-        "Passphrase per il vault credenziali (a memoria, non salvata)",
+        "\nPassphrase per il vault credenziali (a memoria, non salvata)",
         default="", hide_input=True
     )
 
@@ -154,7 +157,7 @@ def setup():
         store.passphrase = vault_passphrase
         click.echo("Vault inizializzato.")
 
-    click.echo(f"\nConfig salvata in {config_path}")
+    click.echo(f"\nConfig salvata in ~/.prox/config.yaml")
     click.echo("Prox e' pronto. Usa 'prox run \"tuo task\"' per iniziare.")
 
 

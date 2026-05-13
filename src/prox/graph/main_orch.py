@@ -8,7 +8,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 
 from prox.graph.state import AgentState, Mode
-from prox.llm.models import ModelRegistry
+from prox.llm import get_model_for_role, Role
 
 MAIN_ORCH_INSTRUCTIONS = """Sei il Main Orchestrator di Prox. Sei l'unico punto di contatto con l'utente.
 
@@ -33,8 +33,8 @@ PARKING_LOT: idee rimandabili
 """
 
 
-def create_main_orch_agent(model_registry: ModelRegistry) -> AgentExecutor:
-    model_name = model_registry.get_model("main_orchestrator")
+def create_main_orch_agent() -> AgentExecutor:
+    model_name = get_model_for_role(Role.MAIN_ORCHESTRATOR)
     llm = ChatOpenAI(model=model_name, temperature=0.2, max_tokens=4096)
 
     prompt = ChatPromptTemplate.from_messages([
@@ -48,8 +48,7 @@ def create_main_orch_agent(model_registry: ModelRegistry) -> AgentExecutor:
 
 
 def main_orchestrator_node(state: AgentState) -> dict:
-    registry = ModelRegistry.from_config()
-    agent = create_main_orch_agent(registry)
+    agent = create_main_orch_agent()
 
     mode = Mode(state.get("mode", "interactive"))
     project_dir = state.get("project_dir", os.getcwd())
