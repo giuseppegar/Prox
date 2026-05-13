@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+*.so
+venv/
+.env
+.vscode/
+.idea/
+*.age
+~/.prox/
+hebbian.json
