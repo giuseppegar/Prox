@@ -34,6 +34,7 @@ from prox.agents import (
 )
 
 HISTORY_FILE = os.path.expanduser("~/.prox/repl_history")
+CONFIG_PATH = os.path.expanduser("~/.prox/config.yaml")
 
 REPL_STYLE = Style.from_dict({
     "prompt": "bold green",
@@ -44,6 +45,21 @@ COMMANDS = WordCompleter([
     "/plan", "/auto", "/interactive", "/mode",
     "/clear", "/status", "/parking", "/help", "/exit",
 ], ignore_case=True)
+
+
+def _load_keys_from_config() -> None:
+    if not os.path.exists(CONFIG_PATH):
+        return
+    import yaml
+    with open(CONFIG_PATH) as f:
+        config = yaml.safe_load(f) or {}
+    providers = config.get("providers", {})
+    for name, info in providers.items():
+        key_env = info.get("key_env", f"{name.upper()}_API_KEY")
+        if key_env not in os.environ:
+            key = info.get("key")
+            if key:
+                os.environ[key_env] = key
 
 
 class ProxREPL:
@@ -57,6 +73,8 @@ class ProxREPL:
             style=REPL_STYLE,
             completer=COMMANDS,
         )
+        _load_keys_from_config()
+        self._check_config()
         self._graph = self._build_graph()
         self._session_log: list[str] = []
         self._tasks: list[dict] = []
@@ -77,6 +95,56 @@ class ProxREPL:
             tester_node=tester_node,
             memory_node=memory_node,
         )
+
+    def _check_config(self) -> None:
+        if not os.path.exists(CONFIG_PATH):
+            self._console.print("[yellow]Nessuna configurazione trovata. Avvio setup guidato...[/yellow]")
+            self._run_setup()
+            return
+        import yaml
+        with open(CONFIG_PATH) as f:
+            config = yaml.safe_load(f) or {}
+        providers = config.get("providers", {})
+        if not providers:
+            self._console.print("[yellow]Nessun provider configurato. Avvio setup...[/yellow]")
+            self._run_setup()
+
+    def _run_setup(self) -> None:
+        self._console.print("[bold]Setup guidato[/bold]")
+        self._console.print("Inserisci i provider LLM. INVIO senza nome per finire.\n")
+        import yaml
+        providers = {}
+        while True:
+            name = input("  Nome provider (es. deepseek, openai): ").strip()
+            if not name:
+                break
+            prov_type = input("  Tipo [N]ative o [P]roxy? ").strip().upper()
+            prov_type = "proxy" if prov_type == "P" else "native"
+            key = input("  API Key: ").strip()
+            key_env = f"{name.upper()}_API_KEY"
+            if key:
+                os.environ[key_env] = key
+            providers[name] = {"type": prov_type, "key_env": key_env}
+            if key:
+                providers[name]["key"] = key
+
+        config = {}
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH) as f:
+                config = yaml.safe_load(f) or {}
+        config["providers"] = providers
+
+        assignments = {}
+        for role in ["main_orchestrator", "mini_orchestrator", "director",
+                      "coder", "reviewer", "researcher", "tester", "memory"]:
+            assignments[role] = f"deepseek/deepseek-v4-pro"
+        config["model_assignments"] = assignments
+
+        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+        with open(CONFIG_PATH, "w") as f:
+            yaml.dump(config, f)
+
+        self._console.print(f"[green]Config salvata in {CONFIG_PATH}[/green]")
 
     def run(self) -> None:
         self._print_header()
@@ -306,6 +374,7 @@ def main():
 
 
 def _run_oneshot(query: str, mode: str, project_dir: Optional[str]):
+    _load_keys_from_config()
     from prox.graph.state import AgentState
     console = Console()
 
