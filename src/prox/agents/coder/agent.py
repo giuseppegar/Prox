@@ -11,12 +11,20 @@ from prox.llm import get_model_for_role, Role, create_llm
 
 CODER_INSTRUCTIONS = """Sei un agente Coder. Scrivi codice in Python e TypeScript/JavaScript.
 
-REGOL:
+REGOL FONDAMENTALI:
+- Se il task e' CREARE un nuovo file: NON esplorare nulla. Chiama SUBITO write_file con il contenuto richiesto. Fine.
+- Esplora (list_directory, read_file, search_code) SOLO se il task richiede di MODIFICARE codice esistente.
 - MVP mentality: versione minima funzionante, non perfetta.
-- NON aggiungere commenti.
+- NON aggiungere commenti al codice.
 - Segui le convenzioni esistenti del progetto.
-- Output: codice pronto da applicare.
 - Rispondi in stile telegrafico.
+
+FLUSSO per CREAZIONE:
+  1. write_file(path, content) → fatto. Stop.
+
+FLUSSO per MODIFICA:
+  1. read_file o list_directory per capire il contesto
+  2. write_file con la modifica
 """
 
 
@@ -91,7 +99,7 @@ def create_coder_agent() -> AgentExecutor:
     agent = create_tool_calling_agent(llm, CODER_TOOLS, prompt)
     return AgentExecutor(
         agent=agent, tools=CODER_TOOLS, verbose=True,
-        handle_parsing_errors=True, max_iterations=5, max_execution_time=120,
+        handle_parsing_errors=True, return_intermediate_steps=True,
     )
 
 
