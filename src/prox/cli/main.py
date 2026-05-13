@@ -4,27 +4,26 @@ from typing import Optional
 
 import click
 
-from prox.graph import (
-    Mode,
-    main_orchestrator_node,
-    mini_orchestrator_node,
-    director_node,
-    create_prox_graph,
-)
-from prox.agents import (
-    coder_node,
-    reviewer_node,
-    researcher_node,
-    tester_node,
-    memory_node,
-)
-from prox.graph.state import AgentState
 
-
-@click.group()
+@click.group(invoke_without_command=True)
 @click.version_option(version="0.1.0", prog_name="prox")
-def main():
+@click.option("--mode", "-m", type=click.Choice(["plan", "auto", "interactive"]),
+              default="interactive", help="Modalità REPL")
+@click.option("--project", "-p", default=None, help="Directory del progetto")
+@click.option("--run", "-r", default=None, help="Esegui task one-shot ed esci")
+@click.pass_context
+def main(ctx, mode: str, project: str, run: str):
     """Prox - AI coding swarm with neural memory."""
+    if run:
+        from prox.repl import _run_oneshot
+        _run_oneshot(run, mode, project)
+        ctx.exit()
+
+    if ctx.invoked_subcommand is None:
+        from prox.repl import ProxREPL
+        repl = ProxREPL(mode=mode, project_dir=project)
+        repl.run()
+        ctx.exit()
 
 
 @main.command()
@@ -32,73 +31,11 @@ def main():
 @click.option("--mode", "-m", type=click.Choice(["plan", "auto", "interactive"]),
               default="interactive", help="Modalità operativa")
 @click.option("--scope", "-s", default=None, help="Directory del progetto")
-@click.option("--resume", is_flag=True, help="Riprendi ultima sessione")
-def run(task: Optional[str], mode: str, scope: Optional[str], resume: bool):
-    """Avvia Prox ed esegui un task."""
-    project_dir = scope or os.getcwd()
-    project_id = os.path.basename(project_dir.rstrip("/"))
-
-    graph = create_prox_graph(
-        main_orch_node=main_orchestrator_node,
-        mini_orch_node=mini_orchestrator_node,
-        director_node=director_node,
-        worker_router=None,
-        coder_node=coder_node,
-        reviewer_node=reviewer_node,
-        researcher_node=researcher_node,
-        tester_node=tester_node,
-        memory_node=memory_node,
-    )
-
-    initial_state: AgentState = {
-        "messages": [],
-        "mode": mode,
-        "project_dir": project_dir,
-        "project_id": project_id,
-        "tasks": [],
-        "parking_lot": [],
-        "session_log": [],
-        "context_tokens": 0,
-        "max_tokens": 200000,
-        "warn_tokens": 100000,
-        "auto_save_tokens": 150000,
-        "active_mini_orch_count": 0,
-        "consensus_reached": False,
-        "director_plan": {},
-        "worker_results": {},
-        "next_agent": "",
-        "user_query": task or "",
-        "needs_user_input": False,
-        "user_question": "",
-        "needs_passphrase": False,
-    }
-
-    if mode == "plan":
-        click.echo(f"Prox · PLAN MODE · scope: {project_dir}")
-    elif mode == "auto":
-        click.echo(f"Prox · AUTO MODE · scope: {project_dir}")
-    else:
-        click.echo(f"Prox · INTERACTIVE MODE · scope: {project_dir}")
-
-    if not task:
-        task = click.prompt("Cosa vuoi fare?")
-
-    initial_state["user_query"] = task
-
-    config = {"configurable": {"thread_id": project_id}}
-    result = graph.invoke(initial_state, config)
-
-    messages = result.get("messages", [])
-    if messages:
-        last_msg = messages[-1]
-        content = last_msg.get("content", str(last_msg)) if isinstance(last_msg, dict) else str(last_msg)
-        click.echo(f"\n{content}")
-
-    parking_lot = result.get("parking_lot", [])
-    if parking_lot:
-        click.echo(f"\nParking lot ({len(parking_lot)} idee rimandate):")
-        for item in parking_lot[:5]:
-            click.echo(f"  - {item}")
+def run(task: Optional[str], mode: str, scope: Optional[str]):
+    """Esegui un task one-shot."""
+    from prox.repl import _run_oneshot
+    query = task or click.prompt("Cosa vuoi fare?")
+    _run_oneshot(query, mode, scope)
 
 
 @main.command()
