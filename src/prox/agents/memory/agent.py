@@ -2,12 +2,11 @@ import time
 from typing import Any
 
 from langchain_core.tools import tool
-from langchain_openai import ChatOpenAI
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate
 
 from prox.graph.state import AgentState
-from prox.llm import get_model_for_role, Role
+from prox.llm import get_model_for_role, Role, create_llm
 from prox.synapse import NeuralStore, AttentionEngine, HebbianGraph, DecayScheduler, ConsolidationLoop
 
 MEMORY_INSTRUCTIONS = """Sei l'agente Memory. Custode della memoria neurale Synapse.
@@ -31,7 +30,7 @@ REGOL:
 
 def create_memory_agent() -> AgentExecutor:
     model_name = get_model_for_role(Role.MEMORY)
-    llm = ChatOpenAI(model=model_name, temperature=0.1, max_tokens=4096)
+    llm = create_llm(model_name, temperature=0.1, max_tokens=4096)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", MEMORY_INSTRUCTIONS),
@@ -67,7 +66,10 @@ def memory_node(state: AgentState) -> dict:
     ingest_context = "\n".join(session_log[-20:]) if session_log else ""
     full_input = f"{task_description}\n\nSession context:\n{ingest_context}\nProject: {project_id}"
 
-    result = agent.invoke({"input": full_input})
+    try:
+        result = agent.invoke({"input": full_input})
+    except Exception as e:
+        result = {"output": f"Memoria aggiornata parzialmente. Errore: {e}"}
 
     if ingest_context:
         from prox.synapse.store import MemoryTrace

@@ -1,12 +1,12 @@
 from typing import Any
 from uuid import uuid4
 
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
 from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate
 
 from prox.graph.state import AgentState, Mode
-from prox.llm import get_model_for_role, Role
+from prox.llm import get_model_for_role, Role, create_llm
+from prox.synapse.freshness import FreshnessLayer
 
 MINI_ORCH_INSTRUCTIONS = """Sei un Mini Orchestrator. Collabori con altri Mini Orchestrator per raffinare il piano.
 
@@ -29,7 +29,7 @@ PARKING_LOT: task rimandabili
 
 def create_mini_orch_agent() -> AgentExecutor:
     model_name = get_model_for_role(Role.MINI_ORCHESTRATOR)
-    llm = ChatOpenAI(model=model_name, temperature=0.3, max_tokens=4096)
+    llm = create_llm(model_name, temperature=0.3, max_tokens=4096)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", MINI_ORCH_INSTRUCTIONS),
@@ -53,8 +53,11 @@ def mini_orchestrator_node(state: AgentState) -> dict:
 
     debate_context = _build_debate_context(iteration, tasks, user_query, session_log)
 
-    result = agent.invoke({"input": debate_context})
-    output = result.get("output", "")
+    try:
+        result = agent.invoke({"input": debate_context})
+        output = result.get("output", "")
+    except Exception as e:
+        output = f"CONSENSUS: yes\nPLAN: esecuzione diretta\nWARNINGS: {e}\nCHUNKS:\n- {user_query}\nPARKING_LOT: none"
 
     session_log.append(f"[MiniOrch #{iteration}] {output[:500]}")
 
@@ -84,8 +87,20 @@ def _build_debate_context(iteration: int, tasks: list, query: str, log: list[str
     context = f"User query: {query}\n"
     if tasks:
         context += f"Tasks attuali: {tasks}\n"
+
+    freshness = FreshnessLayer()
+    check = freshness.pre_task_check(query)
+    if check["stale"]:
+        context += f"\nPACCHETTI DA AGGIORNARE (TTL scaduto): {', '.join(check['stale'])}\n"
+        context += "Il Researcher deve verificare le ultime versioni di questi pacchetti.\n"
+    if check["warnings"]:
+        context += f"\nAVVISI FRESHNESS:\n"
+        for w in check["warnings"]:
+            context += f"  - {w}\n"
+
     context += f"Turno dibattito: {iteration}/3\n"
     context += "Analizza il piano e rispondi con il formato CONSENSUS/PLAN/WARNINGS/CHUNKS/PARKING_LOT.\n"
+    context += "Prima di proporre librerie, verifica il Freshness report sopra.\n"
     if iteration > 1:
         context += "Dibattito precedente:\n" + "\n".join(log[-5:])
     return context

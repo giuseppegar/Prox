@@ -2,12 +2,11 @@ import time
 from typing import Any, Optional
 from uuid import uuid4
 
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
 from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate
 
 from prox.graph.state import AgentState, Mode, Task
-from prox.llm import get_model_for_role, Role
+from prox.llm import get_model_for_role, Role, create_llm
 from prox.vault.store import CredentialStore
 
 MAX_ATTEMPTS = 3
@@ -34,7 +33,7 @@ PRIORITY: <high/medium/low>
 
 def create_director_agent() -> AgentExecutor:
     model_name = get_model_for_role(Role.DIRECTOR)
-    llm = ChatOpenAI(model=model_name, temperature=0.1, max_tokens=4096)
+    llm = create_llm(model_name, temperature=0.1, max_tokens=4096)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", DIRECTOR_INSTRUCTIONS),

@@ -114,15 +114,15 @@ SPEED_SCORES = {"fast": 100, "medium": 50, "slow": 20, "unknown": 30}
 
 
 KNOWN_MODEL_CAPABILITIES = {
-    "deepseek/deepseek-chat": ModelInfo(
-        id="deepseek/deepseek-chat", provider="deepseek", provider_type=ProviderType.NATIVE,
+    "deepseek/deepseek-v4-pro": ModelInfo(
+        id="deepseek/deepseek-v4-pro", provider="deepseek", provider_type=ProviderType.NATIVE,
         cost_per_1m_input=0.14, cost_per_1m_output=0.28, context_window=128000,
-        speed="fast", code_gen_score=85, reasoning_score=78,
+        speed="fast", code_gen_score=90, reasoning_score=92,
     ),
-    "deepseek/deepseek-reasoner": ModelInfo(
-        id="deepseek/deepseek-reasoner", provider="deepseek", provider_type=ProviderType.NATIVE,
-        cost_per_1m_input=0.55, cost_per_1m_output=2.19, context_window=128000,
-        speed="medium", code_gen_score=88, reasoning_score=95,
+    "deepseek/deepseek-v4-flash": ModelInfo(
+        id="deepseek/deepseek-v4-flash", provider="deepseek", provider_type=ProviderType.NATIVE,
+        cost_per_1m_input=0.10, cost_per_1m_output=0.20, context_window=128000,
+        speed="fast", code_gen_score=82, reasoning_score=78,
     ),
     "openai/gpt-4o": ModelInfo(
         id="openai/gpt-4o", provider="openai", provider_type=ProviderType.NATIVE,
@@ -334,16 +334,11 @@ class ModelRouter:
 
         if not candidates:
             candidates = list(self._models)
-            if not candidates:
-                return "deepseek/deepseek-chat"
-
-        scored = []
-        for m in candidates:
-            score = self._score_model(m, role)
-            scored.append((m, score))
+        if not candidates:
+            return "deepseek/deepseek-v4-pro"
 
         scored.sort(key=lambda x: x[1], reverse=True)
-        return scored[0][0].id if scored else "deepseek/deepseek-chat"
+        return scored[0][0].id if scored else "deepseek/deepseek-v4-pro"
 
     def _score_model(self, model: ModelInfo, role: Role) -> float:
         criteria = ROLE_CRITERIA[role]
@@ -380,7 +375,7 @@ class ModelRouter:
         for m in KNOWN_MODEL_CAPABILITIES.values():
             if m.cost_per_1m_input <= 5.0:
                 return m.id
-        return "deepseek/deepseek-chat"
+        return "deepseek/deepseek-v4-pro"
 
     def _load_config(self) -> None:
         if not os.path.exists(self._config_path):

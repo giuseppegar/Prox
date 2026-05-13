@@ -10,6 +10,7 @@ from .router import (
     get_model_for_role,
     ROLE_CRITERIA,
 )
+from .factory import create_llm
 
 __all__ = [
     "ModelRegistry",
@@ -24,4 +25,5 @@ __all__ = [
     "discover_and_assign",
     "get_model_for_role",
     "ROLE_CRITERIA",
+    "create_llm",
 ]

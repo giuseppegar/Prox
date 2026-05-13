@@ -1,13 +1,12 @@
 from typing import Any
 
 from langchain_core.tools import tool
-from langchain_openai import ChatOpenAI
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate
 import httpx
 
 from prox.graph.state import AgentState
-from prox.llm import get_model_for_role, Role
+from prox.llm import get_model_for_role, Role, create_llm
 
 RESEARCHER_INSTRUCTIONS = """Sei un agente Researcher. Unico con accesso a internet e ricerca.
 
@@ -70,7 +69,7 @@ RESEARCHER_TOOLS = [web_search, fetch_docs, check_package_version]
 
 def create_researcher_agent() -> AgentExecutor:
     model_name = get_model_for_role(Role.RESEARCHER)
-    llm = ChatOpenAI(model=model_name, temperature=0.1, max_tokens=4096)
+    llm = create_llm(model_name, temperature=0.1, max_tokens=4096)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", RESEARCHER_INSTRUCTIONS),
@@ -79,7 +78,8 @@ def create_researcher_agent() -> AgentExecutor:
     ])
 
     agent = create_tool_calling_agent(llm, RESEARCHER_TOOLS, prompt)
-    return AgentExecutor(agent=agent, tools=RESEARCHER_TOOLS, verbose=True, handle_parsing_errors=True)
+    return AgentExecutor(agent=agent, tools=RESEARCHER_TOOLS, verbose=True,
+                         handle_parsing_errors=True, max_iterations=3, max_execution_time=60)
 
 
 def researcher_node(state: AgentState) -> dict:
@@ -94,7 +94,10 @@ def researcher_node(state: AgentState) -> dict:
 
     task_description = active_task.get("description", "") if active_task else state.get("user_query", "")
 
-    result = agent.invoke({"input": task_description})
+    try:
+        result = agent.invoke({"input": task_description})
+    except Exception as e:
+        result = {"output": f"Ricerca parziale. Errore: {e}"}
 
     if active_task:
         active_task["status"] = "done"

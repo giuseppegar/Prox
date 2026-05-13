@@ -3,12 +3,11 @@ import time
 from typing import Any
 from uuid import uuid4
 
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
 from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate
 
 from prox.graph.state import AgentState, Mode
-from prox.llm import get_model_for_role, Role
+from prox.llm import get_model_for_role, Role, create_llm
 
 MAIN_ORCH_INSTRUCTIONS = """Sei il Main Orchestrator di Prox. Sei l'unico punto di contatto con l'utente.
 
@@ -35,7 +34,7 @@ PARKING_LOT: idee rimandabili
 
 def create_main_orch_agent() -> AgentExecutor:
     model_name = get_model_for_role(Role.MAIN_ORCHESTRATOR)
-    llm = ChatOpenAI(model=model_name, temperature=0.2, max_tokens=4096)
+    llm = create_llm(model_name, temperature=0.2, max_tokens=4096)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", MAIN_ORCH_INSTRUCTIONS),
@@ -112,8 +111,12 @@ def _plan_task(query: str, project_dir: str, session_log: list, agent: AgentExec
     context = f"User query: {query}\nProject directory: {project_dir}\n"
     context += "Analizza, applica WBS e SMART, e produci un piano."
 
-    result = agent.invoke({"input": context})
-    output = result.get("output", "")
+    try:
+        result = agent.invoke({"input": context})
+    except Exception as e:
+        output = f"COMPLEXITY: simple\nMINI_ORCH_NEEDED: no\nTASKS:\n- {query}\nPARKING_LOT: none"
+    else:
+        output = result.get("output", "")
 
     is_complex = "COMPLEXITY: complex" in output or "COMPLEXITY:COMPLEX" in output.upper()
     is_medium = "COMPLEXITY: medium" in output or "COMPLEXITY:MEDIUM" in output.upper()

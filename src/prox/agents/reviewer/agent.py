@@ -2,12 +2,11 @@ import subprocess
 from typing import Any
 
 from langchain_core.tools import tool
-from langchain_openai import ChatOpenAI
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate
 
 from prox.graph.state import AgentState
-from prox.llm import get_model_for_role, Role
+from prox.llm import get_model_for_role, Role, create_llm
 
 REVIEWER_INSTRUCTIONS = """Sei un agente Reviewer aggressivo. Il tuo compito e' trovare problemi, non complimenti.
 
@@ -55,7 +54,7 @@ REVIEWER_TOOLS = [analyze_diff, read_file_review]
 
 def create_reviewer_agent() -> AgentExecutor:
     model_name = get_model_for_role(Role.REVIEWER)
-    llm = ChatOpenAI(model=model_name, temperature=0.0, max_tokens=4096)
+    llm = create_llm(model_name, temperature=0.0, max_tokens=4096)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", REVIEWER_INSTRUCTIONS),
@@ -64,7 +63,8 @@ def create_reviewer_agent() -> AgentExecutor:
     ])
 
     agent = create_tool_calling_agent(llm, REVIEWER_TOOLS, prompt)
-    return AgentExecutor(agent=agent, tools=REVIEWER_TOOLS, verbose=True, handle_parsing_errors=True)
+    return AgentExecutor(agent=agent, tools=REVIEWER_TOOLS, verbose=True,
+                         handle_parsing_errors=True, max_iterations=3, max_execution_time=60)
 
 
 def reviewer_node(state: AgentState) -> dict:
@@ -79,7 +79,10 @@ def reviewer_node(state: AgentState) -> dict:
 
     task_description = active_task.get("description", "") if active_task else state.get("user_query", "")
 
-    result = agent.invoke({"input": task_description})
+    try:
+        result = agent.invoke({"input": task_description})
+    except Exception as e:
+        result = {"output": f"Analisi parziale. Errore: {e}"}
 
     if active_task:
         active_task["status"] = "done"

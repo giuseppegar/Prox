@@ -183,7 +183,10 @@ def doctor():
 
     try:
         import litellm
-        checks.append(("litellm", True, litellm.__version__))
+        version = getattr(litellm, '__version__', None) or getattr(litellm, '_version', None)
+        if hasattr(version, '__call__'):
+            version = 'ok'
+        checks.append(("litellm", True, str(version) if version else 'ok'))
     except ImportError:
         checks.append(("litellm", False, "non installato"))
 
