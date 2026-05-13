@@ -113,41 +113,12 @@ class ProxREPL:
             self._run_setup()
 
     def _run_setup(self) -> None:
-        self._console.print("[bold]Setup guidato[/bold]")
-        self._console.print("Inserisci i provider LLM. INVIO senza nome per finire.\n")
-        import yaml
-        providers = {}
-        while True:
-            name = input("  Nome provider (es. deepseek, openai): ").strip()
-            if not name:
-                break
-            prov_type = input("  Tipo [N]ative o [P]roxy? ").strip().upper()
-            prov_type = "proxy" if prov_type == "P" else "native"
-            key = input("  API Key: ").strip()
-            key_env = f"{name.upper()}_API_KEY"
-            if key:
-                os.environ[key_env] = key
-            providers[name] = {"type": prov_type, "key_env": key_env}
-            if key:
-                providers[name]["key"] = key
-
-        config = {}
-        if os.path.exists(CONFIG_PATH):
-            with open(CONFIG_PATH) as f:
-                config = yaml.safe_load(f) or {}
-        config["providers"] = providers
-
-        assignments = {}
-        for role in ["main_orchestrator", "mini_orchestrator", "director",
-                      "coder", "reviewer", "researcher", "tester", "memory"]:
-            assignments[role] = f"deepseek/deepseek-v4-pro"
-        config["model_assignments"] = assignments
-
-        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
-        with open(CONFIG_PATH, "w") as f:
-            yaml.dump(config, f)
-
-        self._console.print(f"[green]Config salvata in {CONFIG_PATH}[/green]")
+        from prox.setup_wizard import run_setup_wizard
+        config = run_setup_wizard(rich_console=self._console)
+        default_mode = config.get("default_mode", "simple")
+        if default_mode == "swarm":
+            self._swarm_mode = True
+            self._graph = self._build_graph()
 
     def run(self) -> None:
         self._print_header()

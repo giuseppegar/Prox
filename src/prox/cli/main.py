@@ -42,61 +42,9 @@ def run(task: Optional[str], mode: str, scope: Optional[str]):
 @main.command()
 def setup():
     """Configurazione guidata di Prox (primo avvio)."""
-    click.echo("Prox · Setup guidato")
-    click.echo("======================")
-
-    config_dir = os.path.expanduser("~/.prox")
-    os.makedirs(config_dir, exist_ok=True)
-
-    from prox.llm import ModelRouter, ProviderType, discover_and_assign
-
-    router = ModelRouter()
-
-    click.echo("\nConfigura i provider LLM. Puoi aggiungerne piu' di uno.")
-    click.echo("Un provider NATIVE da' accesso solo ai suoi modelli.")
-    click.echo("Un provider PROXY (es. OpenRouter) da' accesso a TUTTI i modelli.\n")
-
-    while True:
-        name = click.prompt("Nome provider (es. deepseek, openai, openrouter) o INVIO per finire", default="")
-        if not name:
-            break
-
-        click.echo(f"  Tipo: [N]ative (solo modelli {name}) o [P]roxy (tutti i modelli)?")
-        type_choice = click.prompt("  Scegli N/P", default="N")
-        prov_type = "proxy" if type_choice.upper() == "P" else "native"
-
-        key_env = f"{name.upper()}_API_KEY"
-        key = click.prompt(f"  API Key (o INVIO per usare ${key_env})", default="", hide_input=True)
-
-        if key:
-            os.environ[key_env] = key
-
-        router.add_provider(name, prov_type, key=key if key else None, key_env=key_env)
-        click.echo(f"  Provider '{name}' ({prov_type}) aggiunto.\n")
-
-    click.echo("\nScoperta modelli disponibili...")
-    assignments = router.discover_and_assign()
-
-    click.echo("\nAssegnazione automatica modelli per ruolo:")
-    click.echo(router.summary())
-
-    auto_assign = click.confirm("\nConfermi queste assegnazioni?", default=True)
-    if not auto_assign:
-        click.echo("Puoi modificare ~/.prox/config.yaml manualmente.")
-
-    vault_passphrase = click.prompt(
-        "\nPassphrase per il vault credenziali (a memoria, non salvata)",
-        default="", hide_input=True
-    )
-
-    if vault_passphrase:
-        from prox.vault import CredentialStore
-        store = CredentialStore()
-        store.passphrase = vault_passphrase
-        click.echo("Vault inizializzato.")
-
-    click.echo(f"\nConfig salvata in ~/.prox/config.yaml")
-    click.echo("Prox e' pronto. Usa 'prox run \"tuo task\"' per iniziare.")
+    from prox.setup_wizard import run_setup_wizard
+    config = run_setup_wizard()
+    click.echo(f"Config salvata. Default mode: {config.get('default_mode', 'simple')}")
 
 
 @main.command()
