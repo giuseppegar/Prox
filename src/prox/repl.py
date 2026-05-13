@@ -219,12 +219,13 @@ class ProxREPL:
             self._console.print(f"[red]Comando sconosciuto: {command}[/red]")
 
     def _process_query(self, query: str) -> None:
+        self._tasks = []
         state = {
             "messages": [],
             "mode": self._mode.value,
             "project_dir": self._project_dir,
             "project_id": self._project_id,
-            "tasks": self._tasks,
+            "tasks": [],
             "parking_lot": self._parking_lot,
             "session_log": self._session_log,
             "context_tokens": self._context_tokens,
