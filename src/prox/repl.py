@@ -43,6 +43,7 @@ REPL_STYLE = Style.from_dict({
 
 COMMANDS = WordCompleter([
     "/plan", "/auto", "/interactive", "/mode",
+    "/swarm", "/simple",
     "/clear", "/status", "/parking", "/help", "/exit",
 ], ignore_case=True)
 
@@ -63,9 +64,10 @@ def _load_keys_from_config() -> None:
 
 
 class ProxREPL:
-    def __init__(self, mode: str = "interactive", project_dir: Optional[str] = None):
+    def __init__(self, mode: str = "interactive", project_dir: Optional[str] = None, swarm: bool = False):
         self._console = Console()
         self._mode = Mode(mode)
+        self._swarm_mode = swarm
         self._project_dir = project_dir or os.getcwd()
         self._project_id = os.path.basename(self._project_dir.rstrip("/"))
         self._session = PromptSession(
@@ -75,7 +77,8 @@ class ProxREPL:
         )
         _load_keys_from_config()
         self._check_config()
-        self._graph = self._build_graph()
+        self._graph = self._build_graph() if self._swarm_mode else None
+        self._simple_agent = None
         self._session_log: list[str] = []
         self._tasks: list[dict] = []
         self._parking_lot: list[str] = []
@@ -169,13 +172,17 @@ class ProxREPL:
 
     def _print_header(self) -> None:
         header = Text()
-        header.append("Prox · coding swarm · ", style="bold")
-        header.append(f"{self._mode.value}", style="bold cyan")
+        header.append("Prox · coding · ", style="bold")
+        if self._swarm_mode:
+            header.append("swarm", style="bold yellow")
+        else:
+            header.append("simple", style="bold green")
+        header.append(f" · {self._mode.value}", style="bold cyan")
         header.append(f"\nproject: ", style="dim")
         header.append(f"{self._project_id}", style="yellow")
         header.append(f" · ctx: ", style="dim")
         header.append(f"{self._context_tokens//1000}k", style="dim")
-        header.append("\n/help per comandi · Ctrl+C o /exit per uscire")
+        header.append("\n/help · /swarm per orchestrazione")
         self._console.print(Panel(header, box=box.ROUNDED))
 
     def _handle_command(self, cmd: str) -> None:
@@ -201,6 +208,19 @@ class ProxREPL:
         elif command == "/mode":
             colors = {Mode.PLAN: "yellow", Mode.AUTO: "red", Mode.INTERACTIVE: "green"}
             self._console.print(f"Modalità corrente: [{colors.get(self._mode, 'white')}]{self._mode.value}[/]")
+            self._console.print(f"Swarm: {'[yellow]attivo[/]' if self._swarm_mode else '[green]disattivato (simple)[/]'}")
+
+        elif command == "/swarm":
+            self._swarm_mode = True
+            if not self._graph:
+                self._graph = self._build_graph()
+            self._tasks = []
+            self._console.print("[bold yellow]Swarm attivato. MainOrch → MiniOrch → Director → Workers[/bold yellow]")
+
+        elif command == "/simple":
+            self._swarm_mode = False
+            self._tasks = []
+            self._console.print("[bold green]Modalità simple. Agente diretto con tool.[/bold green]")
 
         elif command == "/clear":
             self._console.clear()
@@ -219,6 +239,21 @@ class ProxREPL:
             self._console.print(f"[red]Comando sconosciuto: {command}[/red]")
 
     def _process_query(self, query: str) -> None:
+        if self._swarm_mode:
+            self._process_swarm(query)
+        else:
+            self._process_simple(query)
+
+    def _process_simple(self, query: str) -> None:
+        from prox.simple import run_simple
+        self._console.print(f"  [dim]⏳ elaborazione...[/dim]", end="\r")
+        try:
+            output = run_simple(query, self._project_dir)
+            self._render_output(output)
+        except Exception as e:
+            self._console.print(f"  [red]Errore: {e}[/red]")
+
+    def _process_swarm(self, query: str) -> None:
         self._tasks = []
         state = {
             "messages": [],
@@ -340,19 +375,20 @@ class ProxREPL:
 [bold green]Input:[/] scrivi un task e premi Invio per eseguirlo
 
 [bold yellow]Comandi:[/]
-  /plan          Modalità plan (solo analisi, nessuna modifica)
-  /auto          Modalità auto (esecuzione automatica)
-  /interactive   Modalità interactive (chiede solo per pericoli)
-  /mode          Mostra modalità corrente
-  /status        Mostra stato agenti e task
-  /parking       Mostra parking lot
-  /clear         Pulisce lo schermo
-  /help          Questo aiuto
+  /swarm        Attiva swarm completo (MainOrch → Worker)
+  /simple       Torna a modalità semplice (agente diretto)
+  /plan         Modalità plan (solo analisi)
+  /auto         Modalità auto (esecuzione automatica)
+  /interactive  Modalità interactive (chiede per pericoli)
+  /mode         Mostra modalità corrente
+  /status       Mostra stato agenti e task
+  /parking      Mostra parking lot
+  /clear        Pulisce lo schermo
+  /help         Questo aiuto
   /exit o Ctrl+C Esce
 
-[bold dim]Prox esegue lo swarm nella directory corrente.
-All'interno della directory: lettura/scrittura automatica.
-Fuori dalla directory: chiede conferma (in interactive mode).[/]
+[bold dim]Default: modalità simple (veloce, agente diretto).
+Usa /swarm per task complessi che richiedono orchestrazione.[/]
 """
         self._console.print(Markdown(help_text))
 
@@ -364,13 +400,14 @@ def main():
                         default="interactive")
     parser.add_argument("--project", "-p", default=None)
     parser.add_argument("--run", "-r", default=None, help="Esegui task one-shot")
+    parser.add_argument("--swarm", "-s", action="store_true", help="Avvia in modalità swarm")
     args = parser.parse_args()
 
     if args.run:
         _run_oneshot(args.run, args.mode, args.project)
         return
 
-    repl = ProxREPL(mode=args.mode, project_dir=args.project)
+    repl = ProxREPL(mode=args.mode, project_dir=args.project, swarm=args.swarm)
     repl.run()
 
 

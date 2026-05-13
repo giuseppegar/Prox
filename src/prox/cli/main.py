@@ -11,8 +11,9 @@ import click
               default="interactive", help="Modalità REPL")
 @click.option("--project", "-p", default=None, help="Directory del progetto")
 @click.option("--run", "-r", default=None, help="Esegui task one-shot ed esci")
+@click.option("--swarm", "-s", is_flag=True, help="Avvia in modalità swarm")
 @click.pass_context
-def main(ctx, mode: str, project: str, run: str):
+def main(ctx, mode: str, project: str, run: str, swarm: bool):
     """Prox - AI coding swarm with neural memory."""
     if run:
         from prox.repl import _run_oneshot
@@ -21,7 +22,7 @@ def main(ctx, mode: str, project: str, run: str):
 
     if ctx.invoked_subcommand is None:
         from prox.repl import ProxREPL
-        repl = ProxREPL(mode=mode, project_dir=project)
+        repl = ProxREPL(mode=mode, project_dir=project, swarm=swarm)
         repl.run()
         ctx.exit()
 
