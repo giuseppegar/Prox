@@ -68,4 +68,7 @@ def create_llm(model_name: str, temperature: float = 0.1, max_tokens: int = 4096
     if endpoint.get("base_url"):
         kwargs["openai_api_base"] = endpoint["base_url"]
 
+    if provider == "deepseek":
+        kwargs["model_kwargs"] = {"extra_body": {"thinking": {"type": "disabled"}}}
+
     return ChatOpenAI(**kwargs)

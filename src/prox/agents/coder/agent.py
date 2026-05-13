@@ -1,52 +1,56 @@
+"""Coder agent: writes/modifies files. MVP mentality."""
 import os
 import json
 from typing import Any
 
 from langchain_core.tools import tool
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
 from prox.graph.state import AgentState
 from prox.llm import get_model_for_role, Role, create_llm
 
-CODER_INSTRUCTIONS = """Sei un agente Coder specializzato in Python e TypeScript/JavaScript.
+CODER_INSTRUCTIONS = """Sei un agente Coder. Scrivi codice in Python e TypeScript/JavaScript.
 
-REGOLO:
-- MVP mentality: scrivi la versione minima funzionante, non perfetta.
-- NON aggiungere commenti a meno che non siano necessari.
+REGOL:
+- MVP mentality: versione minima funzionante, non perfetta.
+- NON aggiungere commenti.
 - Segui le convenzioni esistenti del progetto.
-- Se un file ha più di 150 righe, produci uno skeleton (firme + docstring) invece del file completo.
-- Rispondi in stile telegrafico (Caveman mode) verso gli altri agenti.
-- Output format: produci codice pronto da applicare.
+- Output: codice pronto da applicare.
+- Rispondi SOLO con il risultato finale, senza spiegazioni.
+
+TOOL A DISPOSIZIONE:
+- write_file(path, content): scrive un file
+- read_file(path): legge un file
+- list_directory(path): elenca directory
 """
 
 
 @tool
 def read_file(file_path: str, offset: int = 0, limit: int = 200) -> str:
-    """Legge un file dal filesystem. Usa offset e limit per file grandi."""
+    """Legge un file dal filesystem."""
     try:
         with open(file_path, "r") as f:
             lines = f.readlines()
         return "".join(lines[offset:offset + limit])
     except Exception as e:
-        return f"Errore lettura {file_path}: {e}"
+        return f"Errore: {e}"
 
 
 @tool
 def write_file(file_path: str, content: str) -> str:
-    """Scrive contenuto in un file. Crea le directory se non esistono."""
+    """Scrive contenuto in un file. Crea directory se non esistono."""
     try:
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
         with open(file_path, "w") as f:
             f.write(content)
-        return f"File scritto: {file_path}"
+        return f"OK: {file_path}"
     except Exception as e:
-        return f"Errore scrittura {file_path}: {e}"
+        return f"Errore: {e}"
 
 
 @tool
 def list_directory(path: str = ".") -> str:
-    """Elenca file e directory in un path."""
+    """Elenca file e directory in un percorso."""
     try:
         entries = os.listdir(path)
         result = []
@@ -59,65 +63,51 @@ def list_directory(path: str = ".") -> str:
         return f"Errore: {e}"
 
 
-@tool
-def search_code(pattern: str, path: str = ".") -> str:
-    """Cerca un pattern regex nei file del progetto."""
-    import re
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["grep", "-rn", "--include=*.py", "--include=*.js", "--include=*.ts", "--include=*.tsx", pattern, path],
-            capture_output=True, text=True, timeout=10
-        )
-        output = result.stdout.strip()
-        if not output:
-            return "Nessun match trovato."
-        lines = output.split("\n")[:20]
-        return "\n".join(lines)
-    except Exception as e:
-        return f"Errore: {e}"
-
-
-CODER_TOOLS = [read_file, write_file, list_directory, search_code]
-
-
-def create_coder_agent() -> AgentExecutor:
-    model_name = get_model_for_role(Role.CODER)
-    llm = create_llm(model_name, temperature=0.1, max_tokens=4096)
-
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", CODER_INSTRUCTIONS),
-        ("human", "{input}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ])
-
-    agent = create_tool_calling_agent(llm, CODER_TOOLS, prompt)
-    return AgentExecutor(agent=agent, tools=CODER_TOOLS, verbose=True,
-                         handle_parsing_errors=True, max_iterations=3, max_execution_time=60)
+CODER_TOOLS = [read_file, write_file, list_directory]
 
 
 def coder_node(state: AgentState) -> dict:
-    agent = create_coder_agent()
+    model_name = get_model_for_role(Role.CODER)
+    llm = create_llm(model_name, temperature=0.0, max_tokens=4096)
+    llm_with_tools = llm.bind_tools(CODER_TOOLS)
 
     tasks = state.get("tasks", [])
     active_task = None
     for t in tasks:
-        if t.get("agent") == "coder" and t.get("status") != "done":
+        if t.get("agent") == "coder" and t.get("status") not in ("done", "blocked"):
             active_task = t
             break
 
     task_description = active_task.get("description", "") if active_task else state.get("user_query", "")
 
+    project_dir = state.get("project_dir", ".")
+    messages = [
+        SystemMessage(content=CODER_INSTRUCTIONS),
+        HumanMessage(content=f"Task: {task_description}\nProject directory: {project_dir}"),
+    ]
+
+    output = ""
     try:
-        result = agent.invoke({"input": task_description})
+        response = llm_with_tools.invoke(messages)
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            for tool_call in response.tool_calls:
+                tool_name = tool_call.get("name", "")
+                tool_args = tool_call.get("args", {})
+                for t in CODER_TOOLS:
+                    if t.name == tool_name:
+                        result = t.invoke(tool_args)
+                        output += f"[{tool_name}] {result}\n"
+                        break
+        else:
+            output = response.content if hasattr(response, "content") else str(response)
     except Exception as e:
-        result = {"output": f"Eseguito parzialmente. Errore: {e}"}
+        output = f"Eseguito parzialmente. Errore: {e}"
 
     if active_task:
         active_task["status"] = "done"
-        active_task["output"] = result.get("output", "")
+        active_task["output"] = output
 
     return {
         "tasks": tasks,
-        "messages": [{"role": "assistant", "content": result.get("output", "")}],
+        "messages": [{"role": "assistant", "content": output}],
     }
